@@ -1,10 +1,12 @@
+#!/usr/bin/env python
+
 import random
 import json
 
-from paho.mqtt import client as mqtt_client
+#from paho.mqtt import client as mqtt_client
+import paho.mqtt.client as mqtt_client
 
-
-broker = '192.168.178.88'
+broker = 'localhost'
 port = 1883
 topic = "tele/haushalt_/SENSOR"
 topic_new = "power"
@@ -30,13 +32,11 @@ def connect_mqtt() -> mqtt_client:
             print("Failed to connect, return code %d\n", rc)
 
     client = mqtt_client.Client(client_id)
-    # client.username_pw_set(username, password)
     client.on_connect = on_connect
     client.connect(broker, port)
     return client
 
 def publish(client, msg2):
-        
         result = client.publish(topic_new, msg2)
         # result: [0, 1]
         status = result[0]
@@ -47,7 +47,11 @@ def publish(client, msg2):
 
 
 def subscribe(client: mqtt_client):
-    def on_message(client, userdata, msg):
+    client.subscribe(topic)
+    client.on_message = on_message
+
+def on_message(client, userdata, msg):
+    try:
         json_object = json.loads(msg.payload.decode())
         if "leistung_gesamt" in json_object["haus"]:
             json_string = json_object["haus"]["leistung_gesamt"]
@@ -74,24 +78,34 @@ def subscribe(client: mqtt_client):
             json_formatted_str = json.dumps(json_string, indent=2)
             L3["power"] = float(json_formatted_str)
 
-            
             frame["grid"] = "sampleData"
             frame["grid"] = grid
             frame["grid"]["L1"] = L1
             frame["grid"]["L2"] = L2
             frame["grid"]["L3"] = L3
- 
-            msg2 = json.dumps(frame)
-            publish(client,msg2)
-    
-    client.subscribe(topic)
-    client.on_message = on_message
 
+            msg2 = json.dumps(frame)
+            try:
+                publish(client,msg2)
+            except Exception as se:
+                print("Value could not be published:")
+                print(se)
+
+    except ValueError as ve:
+        print("Received message is not a valid JSON. %s" % ve)
+        print("MQTT payload: " + str(msg.payload)[1:])
+    except Exception as e:
+        print("Error occured while recieving data: ")
+        print(e)
 
 def run():
-    client = connect_mqtt()
-    subscribe(client)
-    client.loop_forever()
+    try:
+        client = connect_mqtt()
+        subscribe(client)
+        client.loop_forever()
+    except Exception as e:
+        print("Error occured in Main-Loop: ")
+        print(e)
 
 
 if __name__ == '__main__':
